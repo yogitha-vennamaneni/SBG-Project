@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="12" fill="#1d1dff"/>
+  <!-- Sun rays -->
+  <circle cx="32" cy="22" r="8" fill="#ffdb14"/>
+  <line x1="32" y1="8" x2="32" y2="4" stroke="#ffdb14" stroke-width="3" stroke-linecap="round"/>
+  <line x1="44" y1="12" x2="47" y2="9" stroke="#ffdb14" stroke-width="3" stroke-linecap="round"/>
+  <line x1="48" y1="22" x2="52" y2="22" stroke="#ffdb14" stroke-width="3" stroke-linecap="round"/>
+  <!-- Solar panel -->
+  <rect x="12" y="32" width="40" height="24" rx="3" fill="white" opacity="0.15"/>
+  <rect x="14" y="34" width="17" height="10" rx="1" fill="#ffdb14" opacity="0.8"/>
+  <rect x="33" y="34" width="17" height="10" rx="1" fill="#ffdb14" opacity="0.8"/>
+  <rect x="14" y="46" width="17" height="8" rx="1" fill="#ffdb14" opacity="0.6"/>
+  <rect x="33" y="46" width="17" height="8" rx="1" fill="#ffdb14" opacity="0.6"/>
+  <!-- Battery bolt -->
+  <path d="M28 38 L24 44 H30 L26 52 L38 42 H31 L35 34 Z" fill="white" opacity="0.9"/>
+</svg>

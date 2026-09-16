@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+dist/
+client/dist/
+server/dist/
+
+# Environment variables — NEVER commit these
+.env
+client/.env
+server/.env
+
+#GCP
+server/gcp-service-account.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+client/coverage/
+server/coverage/
+
+# Vite cache
+client/.vite/
