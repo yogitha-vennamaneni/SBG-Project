@@ -1,0 +1,12 @@
+node_modules
+client/node_modules
+server/node_modules
+.env
+.env.*
+.env.local
+.git
+**/*.md
+coverage
+.nyc_output
+client/dist
+server/dist

@@ -4,6 +4,7 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import morgan from 'morgan'
+import path from 'path'
 
 import enquiriesRouter from './routes/enquiries'
 import quotesRouter from './routes/quotes'
@@ -50,6 +51,17 @@ app.use('/api/stc', stcRouter)
 
 // Health check
 app.get('/api/health', (_, res) => res.json({ status: 'ok', env: process.env.NODE_ENV }))
+
+// ─── Static file serving (production only) ───────────────────────────────────
+// In dev, Vite runs on :5173 and proxies /api → :3001. This block is skipped.
+// In production (Cloud Run), Express serves the Vite build from /app/public.
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../public')))
+  // All non-API routes → index.html so React Router handles them
+  app.get('*', (_req, res) =>
+    res.sendFile(path.join(__dirname, '../public/index.html'))
+  )
+}
 
 // ─── Error handler ────────────────────────────────────────────────────────────
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
