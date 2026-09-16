@@ -2,7 +2,7 @@
 
 A full-stack job management and scheduling platform for Solar Battery Group, built as a technical interview project.
 
-Covers the complete solar/battery installation workflow: customer enquiry → quote → e-signature acceptance → job creation → technician scheduling → site visit → invoice/payment → safety certificates.
+Covers the complete solar/battery installation workflow: customer enquiry → quote → e-signature acceptance → job creation → installer scheduling → site visit → invoice/payment → safety certificates.
 
 ---
 
@@ -21,7 +21,6 @@ Covers the complete solar/battery installation workflow: customer enquiry → qu
 | **Auth** | Auth0 (RS256 / JWKS) |
 | **E-signature** | DocuSeal (open-source, self-hosted) — HMAC webhook verification |
 | **Payments** | Stripe — Payment Intents, webhook verification |
-| **Email** | Resend — transactional email |
 | **PDF** | pdf-lib — Quote, Invoice, CES, STC Assignment |
 | **Weather** | OpenWeatherMap 5-day forecast (mock fallback) |
 | **Testing** | Vitest + Testing Library (frontend), Jest + Supertest (backend) |
@@ -36,7 +35,7 @@ sbg-scheduler/
 │   ├── src/
 │   │   ├── components/       # Layout, PhotoUploadPanel
 │   │   ├── data/             # sampleData.ts (demo fixtures)
-│   │   ├── pages/            # Dashboard, Enquiries, Scheduler, Jobs, Quotes, Customers, Technicians
+│   │   ├── pages/            # Dashboard, Enquiries, Scheduler, Jobs, Quotes, Customers, Installers
 │   │   ├── services/         # api.ts (Axios client)
 │   │   ├── theme/            # MUI theme (SBG brand colours)
 │   │   ├── types/            # Shared TypeScript types
@@ -48,8 +47,9 @@ sbg-scheduler/
 │
 ├── server/                   # Express API server
 │   ├── src/
-│   │   ├── routes/           # enquiries, quotes, jobs, technicians, invoices, certificates, webhooks
-│   │   ├── services/         # stcService, weatherService, pdfService
+│   │   ├── routes/           # enquiries, quotes, jobs, installers, customers, invoices, certificates, weather, stc, webhooks
+│   │   ├── controllers/      # one per route group, plus scheduling/conflict logic in jobsController
+│   │   ├── services/         # stcService, weatherService, pdfService, docusealService, storageService
 │   │   └── __tests__/        # Jest unit + integration tests
 │   ├── tsconfig.json
 │   └── package.json
@@ -122,6 +122,8 @@ npm run coverage      # coverage report
 Test files:
 - `src/__tests__/stcCalc.test.ts` — STC calculation + zone mapping
 - `src/__tests__/jobAssignment.test.ts` — scheduling overlap, availability, skills
+- `src/__tests__/installerEligibility.test.ts` — installer eligibility rules: skills, state, rostered day, on-leave check
+- `src/__tests__/api.test.ts` — Axios client request/response handling, auth token interceptor
 
 ### Backend (Jest)
 
@@ -130,11 +132,21 @@ cd server
 npm test
 ```
 
-Test files:
+Test files (Supertest against the real Express routers, with the `pg` layer mocked):
+- `src/__tests__/customersController.test.ts`
+- `src/__tests__/enquiriesController.test.ts`
+- `src/__tests__/quotesController.test.ts`
+- `src/__tests__/jobsController.test.ts`
+- `src/__tests__/scheduling.test.ts` — weekend/hours validation, double-booking and installer-leave conflict checks on `/assign` and `/check-conflicts`
+- `src/__tests__/installersController.test.ts`
+- `src/__tests__/invoicesController.test.ts`
+- `src/__tests__/certificatesController.test.ts`
+- `src/__tests__/weatherController.test.ts`
+- `src/__tests__/stcController.test.ts`
+- `src/__tests__/webhooks.test.ts` — Stripe + DocuSeal webhook handlers, HMAC verification
+- `src/__tests__/mappers.test.ts` — snake_case row → camelCase API shape mapping
 - `src/__tests__/stcService.test.ts` — STC formula, zone lookup, rebate calc
 - `src/__tests__/weatherService.test.ts` — mock forecast, risk scoring, advisories
-- `src/__tests__/webhooks.test.ts` — Stripe + DocuSeal webhook handlers (Supertest)
-- `src/__tests__/scheduling.test.ts` — scheduling rules, duration estimates, EOD check
 
 ---
 
@@ -142,13 +154,21 @@ Test files:
 
 ### Job Types
 
-| Type | Min Techs | Est. Duration |
+| Type | Min Installers | Est. Duration |
 |---|---|---|
 | Solar Installation | 2 | 6 h |
 | Battery Installation | 1 | 4 h |
 | EV Charger | 1 | 3 h |
 | Roof Renovation | 2 | 8 h |
 | Solar Adjustment | 1 | 2 h |
+
+### Scheduling Rules
+
+Enforced server-side on `POST /api/jobs/:id/assign` and checked ahead of time via `POST /api/jobs/check-conflicts`:
+
+- Jobs can only be scheduled Monday–Friday, between 07:00 and 16:00
+- An installer can't be double-booked — checked against both the `job_installers` join table and the legacy `assigned_installer_id` column used by scheduling-export jobs
+- An installer on approved leave (`leave_start`/`leave_end`) for the job date is rejected with a 409
 
 ### Job Lifecycle
 
@@ -218,48 +238,62 @@ Minimum to get started:
 - `GCS_BUCKET_NAME` + `GOOGLE_APPLICATION_CREDENTIALS` (server)
 - `AUTH0_DOMAIN` + `AUTH0_AUDIENCE` (server)
 - `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` (server)
-- `DOCSIGN_API_KEY` + `DOCSIGN_WEBHOOK_SECRET` (server)
+- `DOCUSEAL_API_KEY` + `DOCUSEAL_WEBHOOK_SECRET` (server)
 
 ---
 
 ## API Endpoints
 
 ```
-GET  /api/customers
-GET  /api/customers/:id
+GET   /api/customers
+GET   /api/customers/:id
+GET   /api/customers/:id/jobs
+POST  /api/customers
+PUT   /api/customers/:id
 
-GET  /api/enquiries
-POST /api/enquiries
-GET  /api/enquiries/:id
+GET   /api/enquiries
+GET   /api/enquiries/:id
+POST  /api/enquiries
+PUT   /api/enquiries/:id
 
-GET  /api/quotes
-POST /api/quotes
-GET  /api/quotes/:id/pdf        ← streams PDF
-POST /api/quotes/:id/send       ← triggers DocuSeal
+GET   /api/quotes
+GET   /api/quotes/:id
+POST  /api/quotes
+PUT   /api/quotes/:id
+GET   /api/quotes/:id/pdf              ← streams PDF
+POST  /api/quotes/:id/send             ← triggers DocuSeal
 
-GET  /api/jobs
-POST /api/jobs
-GET  /api/jobs/:id
-PUT  /api/jobs/:id/status
-POST /api/jobs/:id/technicians
+GET   /api/jobs
+POST  /api/jobs
+POST  /api/jobs/check-conflicts        ← pre-flight double-booking / leave check
+GET   /api/jobs/:id
+GET   /api/jobs/:id/history
+PATCH /api/jobs/:id/status
+POST  /api/jobs/:id/assign             ← schedule + assign installers
+POST  /api/jobs/:id/unassign
 
-GET  /api/technicians
-POST /api/technicians/availability-check
+GET   /api/jobs/:jobId/certificates
+POST  /api/jobs/:jobId/certificates
+GET   /api/jobs/:jobId/certificates/:certId/pdf
 
-GET  /api/invoices
-POST /api/invoices
-GET  /api/invoices/:id/pdf
+GET   /api/installers
+GET   /api/installers/:id
+GET   /api/installers/:id/schedule
+POST  /api/installers
+PUT   /api/installers/:id
+POST  /api/installers/availability-check
 
-GET  /api/certificates
-POST /api/certificates/:jobId/generate
-GET  /api/certificates/:id/pdf
+GET   /api/invoices
+GET   /api/invoices/:id
+GET   /api/invoices/:id/pdf
+POST  /api/invoices                    ← admin role only
 
-GET  /api/weather/:postcode
+GET   /api/weather/:postcode
 
-POST /api/stc/calculate
+POST  /api/stc/calculate
 
-POST /api/webhooks/stripe
-POST /api/webhooks/docuseal
+POST  /api/webhooks/stripe
+POST  /api/webhooks/docuseal
 ```
 
 ---
@@ -267,6 +301,7 @@ POST /api/webhooks/docuseal
 ## Security Notes
 
 - API routes are protected by verifying Auth0 RS256 access tokens against Auth0's JWKS endpoint — no shared secret is held by the server (`server/src/middleware/auth.ts`)
+- Role-gated actions (e.g. `POST /api/invoices`) use `requireRole()` against roles read from the Auth0 access token
 - Stripe webhooks verified with raw-body HMAC (`stripe-signature` header)
 - DocuSeal webhooks verified with SHA-256 HMAC + a 5-minute replay window (`x-docuseal-signature` header, format `timestamp.signature`)
 - Helmet.js HTTP security headers on all API responses

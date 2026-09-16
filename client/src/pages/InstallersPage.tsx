@@ -18,6 +18,7 @@ import { installersApi, jobsApi } from '../services/api'
 import { sbgColors } from '../theme'
 import { JobType, Installer, Job } from '../types'
 import { notImplemented } from '../utils/notImplemented'
+import { isInstallerOnLeave } from '../utils/installerEligibility'
 import {
   jobToEvent, AssignDialog, EventDetailsTab, SchedulerDataContext,
   EVENT_MODEL_STRUCTURE, useJobWeather, useSchedulerEventsChange,
@@ -123,6 +124,7 @@ export default function InstallersPage() {
               const assignedJobs = jobs.filter(j => j.assignedInstallers.includes(installer.id))
               const todayJobs = assignedJobs.filter(j => j.scheduledDate && new Date(j.scheduledDate).toLocaleString().split(',')[0] === new Date().toLocaleString().split(',')[0])
               const utilisation = Math.min((assignedJobs.length / 5) * 100, 100)
+              const onLeaveToday = isInstallerOnLeave(installer, format(new Date(), 'yyyy-MM-dd'))
               return (
                 <TableRow key={installer.id} hover>
                   <TableCell>
@@ -146,6 +148,11 @@ export default function InstallersPage() {
                             fontWeight: 700, textTransform: 'capitalize', fontSize: 10, height: 18,
                           }}
                         />
+                        {installer.leaveStart && installer.leaveEnd && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            On leave {installer.leaveStart} – {installer.leaveEnd}
+                          </Typography>
+                        )}
                       </Box>
                     </Stack>
                   </TableCell>
@@ -200,11 +207,11 @@ export default function InstallersPage() {
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label={todayJobs.length === 0 ? 'Available' : `${todayJobs.length} job${todayJobs.length > 1 ? 's' : ''}`}
+                      label={onLeaveToday ? 'On Leave' : todayJobs.length === 0 ? 'Available' : `${todayJobs.length} job${todayJobs.length > 1 ? 's' : ''}`}
                       size="small"
                       sx={{
-                        bgcolor: todayJobs.length === 0 ? '#e8f5e9' : `${sbgColors.blue}18`,
-                        color: todayJobs.length === 0 ? '#2e7d32' : sbgColors.blue,
+                        bgcolor: onLeaveToday ? '#fdecea' : todayJobs.length === 0 ? '#e8f5e9' : `${sbgColors.blue}18`,
+                        color: onLeaveToday ? '#c62828' : todayJobs.length === 0 ? '#2e7d32' : sbgColors.blue,
                         fontSize: 10, fontWeight: 700,
                       }}
                     />

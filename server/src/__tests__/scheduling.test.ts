@@ -75,6 +75,7 @@ describe('POST /api/jobs/:id/assign — scheduling rules', () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ id: 'job-1', estimated_duration: 360 }] }) // existing job + duration lookup
       .mockResolvedValueOnce({ rows: [] })                   // findInstallerConflicts — no overlapping jobs
+      .mockResolvedValueOnce({ rows: [] })                   // findInstallersOnLeave — nobody on leave
       .mockResolvedValueOnce({ rows: [] })                   // UPDATE jobs
       .mockResolvedValueOnce({ rows: [] })                   // DELETE job_installers
       .mockResolvedValueOnce({ rows: [] })                   // INSERT job_installers
@@ -103,7 +104,9 @@ describe('POST /api/jobs/:id/assign — scheduling rules', () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ id: 'job-1', estimated_duration: 360 }] }) // existing job lookup
       .mockResolvedValueOnce({ rows: [{ id: 'job-existing', job_type: 'solar_installation', status: 'scheduled' }] }) // conflicting job
-      .mockResolvedValueOnce({ rows: [{ job_id: 'job-existing', installer_id: installerId }] }) // attachAssignedInstallers lookup
+      .mockResolvedValueOnce({ rows: [{ job_id: 'job-existing', installer_id: installerId }] }) // attachAssignedInstallers: job_installers lookup
+      .mockResolvedValueOnce({ rows: [{ id: installerId, first_name: 'Alice', last_name: 'Smith', is_active: true }] }) // attachAssignedInstallers: installers
+      .mockResolvedValueOnce({ rows: [] }) // attachAssignedInstallers: installer_availability
       .mockResolvedValueOnce({ rows: [{ first_name: 'Alice', last_name: 'Smith' }] }) // busy installer names
 
     const res = await request(app)
@@ -132,7 +135,9 @@ describe('POST /api/jobs/check-conflicts — validation', () => {
   })
 
   it('reports no conflict when the DB returns no overlapping jobs', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] })
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // findInstallerConflicts
+      .mockResolvedValueOnce({ rows: [] }) // findInstallersOnLeave
     const res = await request(app)
       .post('/api/jobs/check-conflicts')
       .send({ installerIds: ['11111111-1111-1111-1111-111111111111'], date: '2026-09-14', startTime: '09:00', durationMinutes: 240 })
@@ -143,8 +148,11 @@ describe('POST /api/jobs/check-conflicts — validation', () => {
 
   it('reports a conflict when the DB returns an overlapping job', async () => {
     mockQuery
-      .mockResolvedValueOnce({ rows: [{ id: 'job-existing', job_type: 'solar_installation', status: 'scheduled' }] })
-      .mockResolvedValueOnce({ rows: [{ job_id: 'job-existing', installer_id: '11111111-1111-1111-1111-111111111111' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'job-existing', job_type: 'solar_installation', status: 'scheduled' }] }) // findInstallerConflicts
+      .mockResolvedValueOnce({ rows: [] }) // findInstallersOnLeave
+      .mockResolvedValueOnce({ rows: [{ job_id: 'job-existing', installer_id: '11111111-1111-1111-1111-111111111111' }] }) // attachAssignedInstallers: job_installers lookup
+      .mockResolvedValueOnce({ rows: [{ id: '11111111-1111-1111-1111-111111111111', first_name: 'Alice', last_name: 'Smith', is_active: true }] }) // attachAssignedInstallers: installers
+      .mockResolvedValueOnce({ rows: [] }) // attachAssignedInstallers: installer_availability
 
     const res = await request(app)
       .post('/api/jobs/check-conflicts')

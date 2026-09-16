@@ -24,7 +24,6 @@
     "node-fetch": "^3.3.2",
     "pdf-lib": "^1.17.1",
     "pg": "^8.11.3",
-    "resend": "^3.2.0",
     "sbg-scheduler": "file:..",
     "stripe": "^14.18.0",
     "uuid": "^9.0.0",

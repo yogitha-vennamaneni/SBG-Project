@@ -142,6 +142,7 @@ describe('POST /api/quotes/:id/send', () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [QUOTE_ROW] })
       .mockResolvedValueOnce({ rows: [] }) // UPDATE quotes
+      .mockResolvedValueOnce({ rows: [{ ...QUOTE_ROW, docsign_status: 'sent', docsign_envelope_id: '999' }] }) // re-fetch after update
     mockCreateSignatureRequest.mockResolvedValueOnce({ id: 999, submitters: [] })
 
     const res = await request(app).post('/api/quotes/quote-1/send')

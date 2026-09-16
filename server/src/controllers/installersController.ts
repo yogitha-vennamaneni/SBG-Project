@@ -135,7 +135,8 @@ export async function availabilityCheck(req: Request, res: Response) {
            SELECT 1 FROM job_installers ji
            JOIN jobs j ON j.id = ji.job_id
            WHERE ji.installer_id = i.id AND j.scheduled_date = $4::date
-         )`,
+         )
+         AND (i.leave_start IS NULL OR i.leave_end IS NULL OR $4::date NOT BETWEEN i.leave_start AND i.leave_end)`,
       [body.installerIds, dayOfWeek, body.startTime, body.date]
     )
     const available = availableRows.map(r => r.id)

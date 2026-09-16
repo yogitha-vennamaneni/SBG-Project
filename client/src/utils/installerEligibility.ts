@@ -9,8 +9,15 @@ export function dayAbbreviation(dateStr: string): string {
   return DAY_ABBREVIATIONS[new Date(y, m - 1, d).getDay()]
 }
 
-// Installers don't cross state lines, and aren't rostered on every day —
-// surface both as a reason the picker disables them, same as a time conflict.
+// leaveStart/leaveEnd are ISO dates (YYYY-MM-DD), inclusive on both ends, so a
+// plain string comparison against another ISO date is safe here.
+export function isInstallerOnLeave(installer: Installer, date: string): boolean {
+  return !!(installer.leaveStart && installer.leaveEnd && date >= installer.leaveStart && date <= installer.leaveEnd)
+}
+
+// Installers don't cross state lines, aren't rostered on every day, and may be
+// on leave — surface all three as reasons the picker disables them, same as a
+// time conflict.
 export function installerIneligibilityReason(installer: Installer, job: Job, date: string): string | null {
   if (installer.state && job.address.state && installer.state !== job.address.state) {
     return `based in ${installer.state}, job is in ${job.address.state}`
@@ -20,6 +27,9 @@ export function installerIneligibilityReason(installer: Installer, job: Job, dat
     if (!installer.workingDays.includes(day)) {
       return `not rostered on ${day}`
     }
+  }
+  if (isInstallerOnLeave(installer, date)) {
+    return `on leave ${installer.leaveStart} to ${installer.leaveEnd}`
   }
   return null
 }

@@ -68,8 +68,10 @@ describe('GET /api/jobs/:id', () => {
 
   it('attaches the full installer list to the job', async () => {
     mockQuery
-      .mockResolvedValueOnce({ rows: [JOB_ROW] })
-      .mockResolvedValueOnce({ rows: [{ id: 'inst-1', first_name: 'Alice', last_name: 'Smith', email: 'a@sbg.com.au', phone: '040', role: 'electrician', skills: '{}', is_active: true }] })
+      .mockResolvedValueOnce({ rows: [JOB_ROW] })                                   // job select
+      .mockResolvedValueOnce({ rows: [{ job_id: 'job-1', installer_id: 'inst-1' }] }) // job_installers lookup
+      .mockResolvedValueOnce({ rows: [{ id: 'inst-1', first_name: 'Alice', last_name: 'Smith', email: 'a@sbg.com.au', phone: '040', role: 'electrician', skills: '{}', is_active: true }] }) // installers
+      .mockResolvedValueOnce({ rows: [] })                                          // installer_availability
 
     const res = await request(app).get('/api/jobs/job-1')
 

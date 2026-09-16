@@ -56,7 +56,7 @@ async function attachAssignedInstallers(jobRows: any[]) {
     if (!availByInstaller.has(a.installer_id)) availByInstaller.set(a.installer_id, [])
     availByInstaller.get(a.installer_id)!.push(a)
   }
-  const installersById = new Map(installerRows.map(i => [i.id, mapInstaller(i, availByInstaller.get(i.id) ?? [])]))
+  const installersById = new Map(installerRows.map((i): [string, any] => [i.id, mapInstaller(i, availByInstaller.get(i.id) ?? [])]))
 
   return jobsWithAssignedIds.map(j => {
     const job: any = mapJobWithCustomer(j)
@@ -149,17 +149,33 @@ async function findInstallerConflicts(
   return attachAssignedInstallers(rows)
 }
 
+async function findInstallersOnLeave(installerIds: string[], date: string) {
+  const { rows } = await query(
+    `SELECT id FROM installers
+     WHERE id = ANY($1::uuid[])
+       AND leave_start IS NOT NULL AND leave_end IS NOT NULL
+       AND $2::date BETWEEN leave_start AND leave_end`,
+    [installerIds, date]
+  )
+  return rows.map(r => r.id as string)
+}
+
 /** POST /api/jobs/check-conflicts */
 export async function checkConflicts(req: Request, res: Response) {
   try {
     const body = ConflictCheckSchema.parse(req.body)
-    const conflictingJobs = await findInstallerConflicts(
-      body.installerIds, body.date, body.startTime, body.durationMinutes, body.excludeJobId ?? null
-    )
+    const [conflictingJobs, installersOnLeave] = await Promise.all([
+      findInstallerConflicts(body.installerIds, body.date, body.startTime, body.durationMinutes, body.excludeJobId ?? null),
+      findInstallersOnLeave(body.installerIds, body.date),
+    ])
+    const reasons: string[] = []
+    if (conflictingJobs.length > 0) reasons.push('One or more installers are already booked in this time window')
+    if (installersOnLeave.length > 0) reasons.push('One or more installers are on leave on this date')
     res.json({
-      hasConflict: conflictingJobs.length > 0,
+      hasConflict: conflictingJobs.length > 0 || installersOnLeave.length > 0,
       conflictingJobs,
-      reason: conflictingJobs.length > 0 ? 'One or more installers are already booked in this time window' : undefined,
+      installersOnLeave,
+      reason: reasons.length > 0 ? reasons.join('; ') : undefined,
     })
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -279,6 +295,11 @@ export async function assign(req: Request, res: Response) {
       startTime: z.string().regex(/^\d{2}:\d{2}$/),
     }).parse(req.body)
 
+    const dayOfWeek = new Date(body.date).getUTCDay()
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      return res.status(400).json({ error: 'Jobs cannot be scheduled on a weekend' })
+    }
+
     const hour = parseInt(body.startTime.split(':')[0], 10)
     if (hour < 7 || hour > 16) {
       return res.status(400).json({ error: 'Start time must be between 07:00 and 16:00' })
@@ -303,6 +324,17 @@ export async function assign(req: Request, res: Response) {
           ? `${names} ${busyInstallers.length > 1 ? 'are' : 'is'} already assigned to another job at that time`
           : 'One or more installers are already assigned to another job at that time',
         conflictingJobs,
+      })
+    }
+
+    const onLeaveIds = await findInstallersOnLeave(body.installerIds, body.date)
+    if (onLeaveIds.length > 0) {
+      const { rows: onLeaveInstallers } = await query(
+        'SELECT first_name, last_name FROM installers WHERE id = ANY($1::uuid[])', [onLeaveIds]
+      )
+      const names = onLeaveInstallers.map((i: any) => `${i.first_name} ${i.last_name}`).join(', ')
+      return res.status(409).json({
+        error: `${names} ${onLeaveInstallers.length > 1 ? 'are' : 'is'} on leave on ${body.date}`,
       })
     }
 

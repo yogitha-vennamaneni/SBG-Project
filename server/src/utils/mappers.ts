@@ -26,7 +26,7 @@ export function toISODate(v: unknown): string | undefined {
 
 export function toISODateTime(v: unknown): string | undefined {
   if (!v) return undefined
-  return v instanceof Date ? v.toLocaleString() : String(v)
+  return v instanceof Date ? v.toISOString() : String(v)
 }
 
 export function toHHMM(v: unknown): string | undefined {
