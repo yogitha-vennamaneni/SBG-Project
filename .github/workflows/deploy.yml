@@ -1,0 +1,76 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+
+env:
+  PROJECT_ID: stone-facility-508700-h3
+  REGION: australia-southeast1
+  SERVICE: sbg-scheduler
+  REGISTRY: australia-southeast1-docker.pkg.dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - run: gcloud auth configure-docker ${{ env.REGISTRY }}
+
+      - name: Build & push image
+        run: |
+          IMAGE=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE }}/${{ env.SERVICE }}:${{ github.sha }}
+          docker build \
+            --build-arg VITE_AUTH0_DOMAIN=${{ secrets.VITE_AUTH0_DOMAIN }} \
+            --build-arg VITE_AUTH0_CLIENT_ID=${{ secrets.VITE_AUTH0_CLIENT_ID }} \
+            --build-arg VITE_AUTH0_AUDIENCE=${{ secrets.VITE_AUTH0_AUDIENCE }} \
+            --build-arg VITE_AUTH0_ROLES_CLAIM=${{ secrets.VITE_AUTH0_ROLES_CLAIM }} \
+            --build-arg VITE_AUTH_ENABLED=${{ secrets.VITE_AUTH_ENABLED }} \
+            -t $IMAGE .
+          docker push $IMAGE
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE }} \
+            --image=${{ env.IMAGE }} \
+            --region=${{ env.REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=8080 \
+            --memory=1Gi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=10 \
+            --set-env-vars="NODE_ENV=production,\
+          AUTH0_DOMAIN=${{ secrets.AUTH0_DOMAIN }},\
+          AUTH0_AUDIENCE=${{ secrets.AUTH0_AUDIENCE }},\
+          AUTH0_ROLES_CLAIM=${{ secrets.AUTH0_ROLES_CLAIM }},\
+          AUTH_ENABLED=${{ secrets.AUTH_ENABLED }},\
+          DATABASE_URL=${{ secrets.DATABASE_URL }},\
+          CLIENT_URL=${{ secrets.CLIENT_URL }},\
+          GCS_BUCKET_NAME=${{ secrets.GCS_BUCKET_NAME }},\
+          GCS_PROJECT_ID=${{ env.PROJECT_ID }},\
+          STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }},\
+          STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }},\
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }},\
+          RESEND_FROM_EMAIL=${{ secrets.RESEND_FROM_EMAIL }},\
+          RESEND_FROM_NAME=${{ secrets.RESEND_FROM_NAME }},\
+          OPENWEATHER_API_KEY=${{ secrets.OPENWEATHER_API_KEY }},\
+          STC_UNIT_PRICE_AUD=${{ secrets.STC_UNIT_PRICE_AUD }},\
+          DOCUSEAL_API_URL=${{ secrets.DOCUSEAL_API_URL }},\
+          DOCUSEAL_API_KEY=${{ secrets.DOCUSEAL_API_KEY }},\
+          DOCUSEAL_WEBHOOK_SECRET=${{ secrets.DOCUSEAL_WEBHOOK_SECRET }}"
