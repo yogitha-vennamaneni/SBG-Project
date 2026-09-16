@@ -22,21 +22,27 @@ const app = express()
 const PORT = process.env.PORT ?? 3001
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
-app.use(helmet())
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'", `https://${process.env.AUTH0_DOMAIN}`, "https://api.sbg.com.au"],
+      imgSrc: ["'self'", "data:"],
+      fontSrc: ["'self'", "data:"],
+    },
+  },
+}))
 app.use(cors({ origin: process.env.CLIENT_URL ?? 'http://localhost:5173' }))
 app.use(morgan('dev'))
 
 // Raw body for Stripe/DocuSeal webhooks BEFORE json middleware.
-// Not gated by AUTH_ENABLED: these are verified by their own provider signatures
-// (Stripe/DocuSeal), not by end-user Auth0 tokens.
 app.use('/api/webhooks', webhooksRouter)
 
 app.use(express.json({ limit: '5mb' }))
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-// Data routes require a valid Auth0 access token once AUTH_ENABLED=true (see
-// middleware/auth.ts). Left off by default so this keeps working unauthenticated
-// until the Auth0 tenant/roles are confirmed ready to enforce.
 const authGate = authEnabled ? [checkJwt] : []
 
 app.use('/api/enquiries', ...authGate, enquiriesRouter)
@@ -53,11 +59,8 @@ app.use('/api/stc', stcRouter)
 app.get('/api/health', (_, res) => res.json({ status: 'ok', env: process.env.NODE_ENV }))
 
 // ─── Static file serving (production only) ───────────────────────────────────
-// In dev, Vite runs on :5173 and proxies /api → :3001. This block is skipped.
-// In production (Cloud Run), Express serves the Vite build from /app/public.
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../public')))
-  // All non-API routes → index.html so React Router handles them
   app.get('*', (_req, res) =>
     res.sendFile(path.join(__dirname, '../public/index.html'))
   )
